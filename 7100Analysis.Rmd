@@ -1,0 +1,122 @@
+---
+title: "Untitled"
+author: "Sarah Jensen"
+date: "4/25/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd("~/GitHub/mgt7100/mgt7100")
+
+knitr::opts_chunk$set(echo = TRUE)
+
+#load libraries
+pacman::p_load (correlation,corrplot,corrr,ggcorrplot,ggplot2,ggpubr,dplyr,ggpubr, psych,rcompanion,tidyverse, readr, readxl)
+
+#load data
+tfi_data <- read_excel("tfi_data.xlsx")
+
+#age
+summary (tfi_data$age) #34.24
+sd(tfi_data$age, na.rm=TRUE) #7.60
+
+#gender
+tfi_data %>%
+  count(gender) 
+
+```
+
+Run some correlations
+```{r}
+#select columns for just the items
+items <-class_data[, c(7:21)]
+  
+#correlations
+corr_items <- cor(items, use="pairwise.complete.obs") #excludes NA
+(corr_items)
+
+#p-values for correlations
+pvalues <- cor_pmat(items) #this produces the p-values of the correlations
+pvalues2 <- round(cor_pmat(items), 2) #rounded to 2 decimal places
+(pvalues)
+
+#make correlation matrix
+corrplot (corr_items, method= "number")
+ggcorrplot(corr_items, hc.order=TRUE, lab=TRUE)
+```
+
+
+```{r}
+#make dendrogram using complete link clustering
+hclust <- hclust(as.dist(corr_items), method = 'complete')
+plot(hclust)
+
+#cut dendrogram (it looked like 4 groups which is why I went w/ K=4)
+cutree(hclust, 4)
+
+#PCA
+pr.out=prcomp(corr_items, scale=TRUE)
+summary (pr.out)
+
+Cols=function (vec){
+  cols=rainbow(length(unique(vec)))
+  return (cols[as.numeric(as.factor(vec))])
+}
+
+figure1 <-plot(pr.out$x[1:225], col=Cols(corr_items), pch=19, xlab= "factor 1", ylab="factor 2")
+(figure1)
+#^This looks all correlated...no groups emerge
+
+#looking at the distance between the items, it looks like 3 clusters emerge (different from hclust above)
+distance= as.dist(1-cor(t(corr_items)))
+plot (hclust(distance, method="complete"), main="Plotted Distance Using Correlation")
+
+```
+# Figure out the MFQ (haven't done this yet)
+```{r}
+#select the MFQ items
+mfq <- class_data[,c(23:54)]
+
+#harm
+harm <- class_data %>%
+  select (mfq1_1, mfq1_7, mfq1_12, mfq2_1, mfq2_7, mfq2_12)
+alpha (harm) #.82
+
+
+#fairness
+fair <- class_data %>%
+  select (mfq1_2, mfq1_8, mfq1_13, mfq2_2, mfq2_8, mfq2_13)
+alpha (fair) #.76
+
+#loyalty
+loyal <- class_data %>%
+  select (mfq1_3, mfq1_9, mfq1_14, mfq2_3, mfq2_9, mfq2_14)
+alpha (loyal) #.89
+
+#authority
+authority <- class_data %>%
+  select (mfq1_4, mfq1_10, mfq1_15, mfq2_4, mfq2_10, mfq2_15)
+alpha (authority) #.89
+
+#purity
+purity <- class_data %>%
+  select (mfq1_5, mfq1_11, mfq1_16, mfq2_5, mfq2_11, mfq2_16)
+alpha (purity) #.90
+
+
+#Create composite scores to use in correlations
+class_data1 <- class_data %>%
+  mutate (harmscore= (mfq1_1+mfq1_7+mfq1_12+mfq2_1+mfq2_7+mfq2_12)/6,
+          fairscore= (mfq1_2+mfq1_8+mfq1_13+mfq2_2+mfq2_8+mfq2_13)/6,
+          loyalscore= (mfq1_3+mfq1_9+mfq1_14+mfq2_3+mfq2_9+mfq2_14)/6,
+          authorityscore= (mfq1_4+mfq1_10+mfq1_15+mfq2_4+mfq2_10+mfq2_1)/6,
+          purityscore= (mfq1_5+mfq1_11+mfq1_16+mfq2_5+mfq2_11+mfq2_16)/6) %>%
+  select (Q1_1:Q1_15, harmscore:purityscore)
+
+correlated_wmfq <- cor(class_data1, use="pairwise.complete.obs") #excludes NA
+(correlated_wmfq)
+
+ggcorrplot(correlated_wmfq, hc.order=TRUE, lab=TRUE)
+
+
+```
