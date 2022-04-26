@@ -25,12 +25,16 @@ tfi_data %>%
   count(gender) 
 
 ```
+Correlations
 
-Run some correlations
 ```{r}
 #select columns for just the items
-items <-class_data[, c(7:21)]
-  
+items <-class_data[,c(4:18)] %>%
+  slice(-c(1))
+
+#convert to numeric
+items[1:15] <- lapply(items[1:15], FUN = function(y){as.numeric(y)})
+
 #correlations
 corr_items <- cor(items, use="pairwise.complete.obs") #excludes NA
 (corr_items)
@@ -41,8 +45,14 @@ pvalues2 <- round(cor_pmat(items), 2) #rounded to 2 decimal places
 (pvalues)
 
 #make correlation matrix
-corrplot (corr_items, method= "number")
-ggcorrplot(corr_items, hc.order=TRUE, lab=TRUE)
+corrplot (corr_items, method= "number", hc.order=TRUE, addCoef.col = 1, number.cex = 0.5)
+ggcorrplot(corr_items, 
+           outline.col="white",
+           hc.order=TRUE,
+           lab=TRUE,
+           lab_size=2,
+           type="lower")
+
 ```
 
 
@@ -50,9 +60,6 @@ ggcorrplot(corr_items, hc.order=TRUE, lab=TRUE)
 #make dendrogram using complete link clustering
 hclust <- hclust(as.dist(corr_items), method = 'complete')
 plot(hclust)
-
-#cut dendrogram (it looked like 4 groups which is why I went w/ K=4)
-cutree(hclust, 4)
 
 #PCA
 pr.out=prcomp(corr_items, scale=TRUE)
@@ -70,6 +77,132 @@ figure1 <-plot(pr.out$x[1:225], col=Cols(corr_items), pch=19, xlab= "factor 1", 
 #looking at the distance between the items, it looks like 3 clusters emerge (different from hclust above)
 distance= as.dist(1-cor(t(corr_items)))
 plot (hclust(distance, method="complete"), main="Plotted Distance Using Correlation")
+
+
+# look at k-means clustering
+items_mds <- items %>%
+  dist() %>%          
+  cmdscale() %>%
+  as_tibble()
+colnames(items_mds) <- c("Dim.1", "Dim.2")
+
+clust <- kmeans(items_mds, 3)$cluster %>%
+  as.factor()
+items_mds2 <- items_mds %>%
+  mutate(groups = clust)
+# Plot and color by groups
+ggscatter(items_mds2, x = "Dim.1", y = "Dim.2", 
+          label = rownames(items_mds),
+          color = "groups",
+          palette = "jco",
+          size = 1, 
+          ellipse = TRUE,
+          ellipse.type = "convex",
+          repel = TRUE)
+
+#do a scree plot
+pr.out<- prcomp(items, scale=TRUE)
+summary (pr.out)
+pr.out$center
+pr.out$scale
+
+var_explained = pr.out$sdev^2 / sum(pr.out$sdev^2)
+
+#create scree plot
+length(var_explained)
+screep1 <- qplot(c(1:15), var_explained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, .5)
+
+(screep1)
+
+#this is not helpful
+head(as.matrix(scale(items)) %*% pr.out$rotation)
+dim(pr.out$x)
+biplot(pr.out, scale=0)
+
+#diagram is interesting
+items_diagram <- fa(items,3,n.obs=159)
+fa.diagram(items_diagram)
+
+```
+# Other mds stuff
+```{r}
+
+distance <- dist(items, method = "euclidean", diag = FALSE, upper = FALSE, p = 2)
+
+items_mds3 <-cmdscale(distance, k=2)
+round(items_mds3, 2)
+plot(items_mds3,type="n", xlab="Dimension 1", ylab="Dimension 2",main ="Items")    
+text(items_mds3,labels=names(items))
+
+#3d pca isn't working
+library(pca3d)
+pca <- prcomp(distance, scale.=TRUE, drop=F)
+gr <- factor(distance)
+pca3d(pca, group=gr)
+
+#3dscatterplot
+scatterplot3d(df[1:159, 1:3]) # think first set of numbers are rows and second set is columns
+fun_grob_out <- fun_grob()
+grid.newpage()                               
+pushViewport(viewport(width = 0.6,             
+                      height = 0.6,
+                      angle = 150))
+grid.draw(fun_grob_out) 
+
+#now I try yet another thing...
+#install.packages("plotly")
+library(plotly)
+library(rgl)
+#X <- subset (items, select = -c(Q1_1))
+prin_comp <- prcomp(items, scale=TRUE, rank. = 3)
+components <- prin_comp[["x"]]
+components <- data.frame(components)
+components$PC2 <- -components$PC2
+components$PC3 <- -components$PC3
+#components = cbind(components, items$Q1_1)
+tot_explained_variance_ratio <- summary(prin_comp)[["importance"]]['Proportion of Variance',]
+tot_explained_variance_ratio <- 100 * sum(tot_explained_variance_ratio)
+
+title = 'Plot by first 3 components'
+
+fig <- plot_ly(components, type= "scatter3d", mode = 'lines+markers', x = ~PC1, y = ~PC2, z = ~PC3, col=factor(sample(components[1:3],159,TRUE)), colors = c('#636EFA','#EF553B','#00CC96') )
+
+fig <- fig %>%
+  layout(
+    title = title,
+    scene = list(bgcolor = "#e5ecf6")
+)
+
+fig
+(components)
+
+#another one using mds2
+X <- subset (items_mds2, select = -c(groups))
+prin_comp <- prcomp(X, scale=TRUE, rank. = 3)
+components <- prin_comp[["x"]]
+components <- data.frame(components)
+components$PC1 <- -components$PC1
+components$PC2 <- -components$PC2
+components = cbind(components, items_mds2$groups)
+tot_explained_variance_ratio <- summary(prin_comp)[["importance"]]['Proportion of Variance',]
+tot_explained_variance_ratio <- 100 * sum(tot_explained_variance_ratio)
+
+title = 'Plot by first 2 components'
+
+fig <- plot_ly(components, type= "scatter3d", mode = 'lines+markers', x = ~PC1, y = ~PC2, color=items_mds2$groups, colors = c('#636EFA','#EF553B'))
+
+fig2 <- fig %>%
+  layout(
+    title = title,
+    scene = list(bgcolor = "#e5ecf6")
+)
+
+fig2
 
 ```
 # Figure out the MFQ (haven't done this yet)
