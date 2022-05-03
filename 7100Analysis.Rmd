@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+-title: "Untitled"
 author: "Sarah Jensen"
 date: "4/25/2022"
 output: html_document
@@ -11,10 +11,11 @@ setwd("~/GitHub/mgt7100/mgt7100")
 knitr::opts_chunk$set(echo = TRUE)
 
 #load libraries
-pacman::p_load (correlation,corrplot,corrr,ggcorrplot,ggplot2,ggpubr,dplyr,ggpubr, psych,rcompanion,tidyverse, readr, readxl)
+pacman::p_load (correlation,corrplot,corrr,ggcorrplot,ggplot2,ggpubr,dplyr,ggpubr, psych,rcompanion,tidyverse, readr, readxl,factoextra)
 
 #load data
 tfi_data <- read_excel("tfi_data.xlsx")
+class_data <- read_csv("class_data.csv") # this one I only use for the second correlation plot
 
 #age
 summary (tfi_data$age) #34.24
@@ -29,8 +30,7 @@ Correlations
 
 ```{r}
 #select columns for just the items
-items <-class_data[,c(4:18)] %>%
-  slice(-c(1))
+items <-tfi_data[,c(4:18)]
 
 #convert to numeric
 items[1:15] <- lapply(items[1:15], FUN = function(y){as.numeric(y)})
@@ -46,7 +46,19 @@ pvalues2 <- round(cor_pmat(items), 2) #rounded to 2 decimal places
 
 #make correlation matrix
 corrplot (corr_items, method= "number", hc.order=TRUE, addCoef.col = 1, number.cex = 0.5)
+
 ggcorrplot(corr_items, 
+           outline.col="white",
+           hc.order=TRUE,
+           lab=TRUE,
+           lab_size=2,
+           type="lower")
+
+#From class data
+items_1 <-class_data[, c(7:21)]
+corr_items_1 <- cor(items_1, use="pairwise.complete.obs") #excludes NA
+
+ggcorrplot(corr_items_1, 
            outline.col="white",
            hc.order=TRUE,
            lab=TRUE,
@@ -61,8 +73,13 @@ ggcorrplot(corr_items,
 hclust <- hclust(as.dist(corr_items), method = 'complete')
 plot(hclust)
 
+#factor analysis
+factanal(items, 3, data = NULL, covmat = NULL, n.obs = 159)
+factanal(items, 2, data = NULL, covmat = NULL, n.obs = 159)
+factanal(items, 5, data = NULL, covmat = NULL, n.obs = 159)
+
 #PCA
-pr.out=prcomp(corr_items, scale=TRUE)
+pr.out=prcomp(items, scale=TRUE)
 summary (pr.out)
 
 Cols=function (vec){
@@ -73,6 +90,8 @@ Cols=function (vec){
 figure1 <-plot(pr.out$x[1:225], col=Cols(corr_items), pch=19, xlab= "factor 1", ylab="factor 2")
 (figure1)
 #^This looks all correlated...no groups emerge
+
+biplot (pr.out, scale=TRUE)
 
 #looking at the distance between the items, it looks like 3 clusters emerge (different from hclust above)
 distance= as.dist(1-cor(t(corr_items)))
@@ -86,7 +105,7 @@ items_mds <- items %>%
   as_tibble()
 colnames(items_mds) <- c("Dim.1", "Dim.2")
 
-clust <- kmeans(items_mds, 3)$cluster %>%
+clust <- kmeans(items_mds, 2)$cluster %>%
   as.factor()
 items_mds2 <- items_mds %>%
   mutate(groups = clust)
@@ -101,6 +120,8 @@ ggscatter(items_mds2, x = "Dim.1", y = "Dim.2",
           repel = TRUE)
 
 #do a scree plot
+fviz_eig(pr.out)
+
 pr.out<- prcomp(items, scale=TRUE)
 summary (pr.out)
 pr.out$center
@@ -113,20 +134,28 @@ length(var_explained)
 screep1 <- qplot(c(1:15), var_explained) + 
   geom_line() + 
   xlab("Principal Component") + 
-  ylab("Variance Explained") +
+  ylab("Eigenvaue") +
   ggtitle("Scree Plot") +
-  ylim(0, .5)
+  ylim(0, .5) +
+  theme_classic ()
 
 (screep1)
 
-#this is not helpful
-head(as.matrix(scale(items)) %*% pr.out$rotation)
-dim(pr.out$x)
-biplot(pr.out, scale=0)
+#biplots
+fviz_pca_var(pr.out,
+             col.var = "contrib", 
+             gradient.cols = c("#912CEE", "#20B2AA", "#EE9572"),
+             repel = TRUE)
 
-#diagram is interesting
+fviz_pca_biplot(pr.out, repel = TRUE,
+                col.var = "#912CEE", 
+                col.ind = "#EE9572"  
+                )
+
+#diagram is interesting but I didn't use this in the paper
 items_diagram <- fa(items,3,n.obs=159)
 fa.diagram(items_diagram)
+
 
 ```
 # Other mds stuff
@@ -139,11 +168,6 @@ round(items_mds3, 2)
 plot(items_mds3,type="n", xlab="Dimension 1", ylab="Dimension 2",main ="Items")    
 text(items_mds3,labels=names(items))
 
-#3d pca isn't working
-library(pca3d)
-pca <- prcomp(distance, scale.=TRUE, drop=F)
-gr <- factor(distance)
-pca3d(pca, group=gr)
 
 #3dscatterplot
 scatterplot3d(df[1:159, 1:3]) # think first set of numbers are rows and second set is columns
@@ -170,7 +194,7 @@ tot_explained_variance_ratio <- 100 * sum(tot_explained_variance_ratio)
 
 title = 'Plot by first 3 components'
 
-fig <- plot_ly(components, type= "scatter3d", mode = 'lines+markers', x = ~PC1, y = ~PC2, z = ~PC3, col=factor(sample(components[1:3],159,TRUE)), colors = c('#636EFA','#EF553B','#00CC96') )
+fig <- plot_ly(components, type= "scatter3d", mode = 'lines+markers', x = ~PC1, y = ~PC2, z = ~PC3, colors = c('#636EFA','#EF553B','#00CC96') )
 
 fig <- fig %>%
   layout(
@@ -179,6 +203,9 @@ fig <- fig %>%
 )
 
 fig
+
+htmlwidgets::saveWidget(as_widget(fig), "Figure1.html")
+
 (components)
 
 #another one using mds2
@@ -205,16 +232,16 @@ fig2 <- fig %>%
 fig2
 
 ```
-# Figure out the MFQ (haven't done this yet)
+# Computing things for the MFQ
 ```{r}
 #select the MFQ items
 mfq <- class_data[,c(23:54)]
+another_mfq <- tfi_data[,c(20:51)]
 
 #harm
 harm <- class_data %>%
   select (mfq1_1, mfq1_7, mfq1_12, mfq2_1, mfq2_7, mfq2_12)
 alpha (harm) #.82
-
 
 #fairness
 fair <- class_data %>%
@@ -236,6 +263,18 @@ purity <- class_data %>%
   select (mfq1_5, mfq1_11, mfq1_16, mfq2_5, mfq2_11, mfq2_16)
 alpha (purity) #.90
 
+#mfq scores
+mfq_scores <- tfi_data %>%
+  mutate (purityscore= (mfq1_5+mfq1_11+mfq1_16+mfq2_5+mfq2_11+mfq2_16)/6,
+          authorityscore=(mfq1_4+mfq1_10+mfq1_15+mfq2_4+mfq2_10+mfq2_15)/6,
+          loyalscore=(mfq1_3+mfq1_9+mfq1_14+mfq2_3+mfq2_9+mfq2_14)/6,
+          fairscore=(mfq1_2+mfq1_8+mfq1_13+mfq2_2+mfq2_8+mfq2_13)/6,
+          harmscore=(mfq1_1+mfq1_7+mfq1_12+mfq2_1+mfq2_7+mfq2_12)/6)
+
+mfq_summary_scores <- mfq_scores %>%  
+  get_summary_stats(purityscore,authorityscore,loyalscore,fairscore, harmscore)
+  
+(mfq_scores)
 
 #Create composite scores to use in correlations
 class_data1 <- class_data %>%
@@ -251,5 +290,97 @@ correlated_wmfq <- cor(class_data1, use="pairwise.complete.obs") #excludes NA
 
 ggcorrplot(correlated_wmfq, hc.order=TRUE, lab=TRUE)
 
+
+```
+
+#TFI demographics
+
+```{r}
+#compute total score
+tfi_data2 <- tfi_data %>%
+  mutate (totalscore= rowMeans(tfi_data[4:18], na.rm=TRUE))
+
+summary (tfi_data2$totalscore) #4.64
+sd(tfi_data2$totalscore, na.rm=TRUE) #0.35 
+
+#t-test (gender)
+t.test(totalscore ~ gender, data=tfi_data2) #ns p=.404 (males=4.62, females=4.67)
+       
+#regression (age)
+model <- lm(totalscore ~ age, data=tfi_data2) #ns p=.119
+summary(model)
+
+#ANOVA (polid)
+anova <- aov(totalscore ~ polid, data=tfi_data2) #significant F(7,151)=4.38, p<.001
+summary (anova)
+TukeyHSD(anova)
+
+#ANOVA (race)
+anova2 <- aov(totalscore ~ race, data=tfi_data2) #ns p=.183
+summary (anova2)
+
+#model with all 4 variables
+model2 <- lm(totalscore~ polid+age+gender+race, data=tfi_data2)
+summary(model2)
+
+```
+
+#MFQ demographics
+```{r}
+#t-test (gender)
+t.test(purityscore ~ gender, data=mfq_scores) #ns p=.137 (males=3.67, females=3.35)
+t.test(authorityscore ~ gender, data=mfq_scores) #ns p=.182 (males=3.64, females=3.38)
+t.test(loyalscore ~ gender, data=mfq_scores) #ns p=.121 (males=3.63, females=3.31)
+t.test(harmscore ~ gender, data=mfq_scores) #ns p=.986 (males=3.79, females=3.79)
+t.test(fairscore ~ gender, data=mfq_scores) #ns p=.937 (males=3.83, females=3.84)
+       
+#regression (age)
+model <- lm(purityscore ~ age, data=mfq_scores) #ns p=.136
+summary(model)
+model <- lm(authorityscore ~ age, data=mfq_scores) #ns p=.403
+summary(model)
+model <- lm(loyalscore ~ age, data=mfq_scores) #ns p=.114
+summary(model)
+model <- lm(harmscore ~ age, data=mfq_scores) #ns p=.339
+summary(model)
+model <- lm(fairscore ~ age, data=mfq_scores) #ns p=.073
+summary(model)
+
+#ANOVA (polid)
+anova <- aov(purityscore ~ polid, data=mfq_scores) #significant F(7,151)=5.39, p<.001
+summary (anova)
+TukeyHSD(anova)
+
+anova <- aov(authorityscore ~ polid, data=mfq_scores) #significant F(7,151)=5.39, p<.001
+summary (anova)
+TukeyHSD(anova)
+
+anova <- aov(loyalscore ~ polid, data=mfq_scores) #significant F(7,151)=6.11, p<.001
+summary (anova)
+TukeyHSD(anova)
+
+anova <- aov(fairscore ~ polid, data=mfq_scores) #significant F(7,151)=4.24, p<.001
+summary (anova)
+TukeyHSD(anova)
+
+anova <- aov(harmscore ~ polid, data=mfq_scores) #significant F(7,151)=4.01, p<.001
+summary (anova)
+TukeyHSD(anova)
+
+#ANOVA (race)
+anova2 <- aov(purityscore ~ race, data=mfq_scores) #significant F(7,151)=2.55, p=.017
+summary (anova2)
+
+anova2 <- aov(authorityscore ~ race, data=mfq_scores) #significant F(7,151)=2.19, p=.038
+summary (anova2)
+
+anova2 <- aov(loyalscore ~ race, data=mfq_scores) #significant F(7,151)=3.48, p=.001
+summary (anova2)
+
+anova2 <- aov(harmscore ~ race, data=mfq_scores) #significant F(7,151)=0.86, p=.539
+summary (anova2)
+
+anova2 <- aov(fairscore ~ race, data=mfq_scores) #significant F(7,151)=0.73, p=.648
+summary (anova2)
 
 ```
